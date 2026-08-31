@@ -462,70 +462,92 @@ public final class EntitiesListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityFeed(PlayerInteractEntityEvent e) {
-        if (!(e.getRightClicked() instanceof Animals) || ItemUtils.isOffHand(e))
+        if (!(e.getRightClicked() instanceof Animals))
             return;
-
-        ItemStack inHand = e.getPlayer().getItemInHand();
-
-        if (!plugin.getNMSEntities().isAnimalFood((Animals) e.getRightClicked(), inHand))
+    
+        EquipmentSlot usedHand = ItemUtils.getHand(e);
+        ItemStack inHand = ItemUtils.getItemFromHand(
+                e.getPlayer().getInventory(), usedHand);
+    
+        if (inHand == null ||
+                !plugin.getNMSEntities().isAnimalFood((Animals) e.getRightClicked(), inHand))
             return;
-
+    
         if (!EntityUtils.canBeBred((Animals) e.getRightClicked()))
             return;
-
+    
         StackedEntity stackedEntity = WStackedEntity.of(e.getRightClicked());
+    
         int inventoryItemsAmount = plugin.getSettings().smartBreedingConsumeEntireInventory ?
-                ItemUtils.countItem(e.getPlayer().getInventory(), inHand) : inHand.getAmount();
-
+                ItemUtils.countItem(e.getPlayer().getInventory(), inHand) :
+                inHand.getAmount();
+    
         if (stackedEntity.getStackAmount() > 1) {
             int itemsAmountToRemove;
-
+    
             if (plugin.getSettings().smartBreedingEnabled) {
                 int breedableAmount = e.getPlayer().getGameMode() == GameMode.CREATIVE ?
                         stackedEntity.getStackAmount() :
                         Math.min(stackedEntity.getStackAmount(), inventoryItemsAmount);
-
+    
                 if (breedableAmount % 2 != 0)
                     breedableAmount--;
-
+    
                 if (breedableAmount < 2)
                     return;
-
+    
                 // Setting the entity to be in love-mode.
-                plugin.getNMSEntities().setInLove((Animals) e.getRightClicked(), e.getPlayer(), true);
-
+                plugin.getNMSEntities().setInLove(
+                        (Animals) e.getRightClicked(),
+                        e.getPlayer(),
+                        true
+                );
+    
                 itemsAmountToRemove = breedableAmount;
-
                 ItemStack inHandCopy = inHand.clone();
-
+    
                 Executor.sync(() -> {
                     // Spawning the baby after 2.5 seconds
                     int babiesAmount = itemsAmountToRemove / 2;
-
+    
                     // Making sure the entities are not in a love-mode anymore.
-                    plugin.getNMSEntities().setInLove((Animals) e.getRightClicked(), e.getPlayer(), false);
-
+                    plugin.getNMSEntities().setInLove(
+                            (Animals) e.getRightClicked(),
+                            e.getPlayer(),
+                            false
+                    );
+    
                     // Resetting the breeding of the entity to 5 minutes
                     ((Animals) e.getRightClicked()).setAge(6000);
-
+    
                     // Calculate exp to drop
                     int expToDrop = Random.nextInt(1, 7, babiesAmount);
-
                     LivingEntity childEntity;
-
+    
                     if (EntityTypes.fromEntity(stackedEntity.getLivingEntity()) == EntityTypes.TURTLE) {
                         // Turtles should lay an egg instead of spawning a baby.
                         plugin.getNMSEntities().setTurtleEgg(stackedEntity.getLivingEntity());
                         stackedEntity.setFlag(EntityFlag.BREEDABLE_AMOUNT, babiesAmount);
                         childEntity = null;
                     } else {
-                        StackedEntity duplicated = ((WStackedEntity) stackedEntity).spawnDuplicate(babiesAmount, SpawnCause.BREEDING, _childEntity -> {
-                            return plugin.getNMSEntities().callEntityBreedEvent((LivingEntity) _childEntity, (LivingEntity) e.getRightClicked(),
-                                    (LivingEntity) e.getRightClicked(), e.getPlayer(), inHandCopy, expToDrop);
-                        });
-                        childEntity = duplicated == null ? null : duplicated.getLivingEntity();
+                        StackedEntity duplicated = ((WStackedEntity) stackedEntity).spawnDuplicate(
+                                babiesAmount,
+                                SpawnCause.BREEDING,
+                                _childEntity -> plugin.getNMSEntities().callEntityBreedEvent(
+                                        (LivingEntity) _childEntity,
+                                        (LivingEntity) e.getRightClicked(),
+                                        (LivingEntity) e.getRightClicked(),
+                                        e.getPlayer(),
+                                        inHandCopy,
+                                        expToDrop
+                                )
+                        );
+    
+                        childEntity = duplicated == null ?
+                                null :
+                                duplicated.getLivingEntity();
                     }
-
+    
                     if (childEntity != null) {
                         ((Animals) childEntity).setBaby();
                         EntityUtils.spawnExp(stackedEntity.getLocation(), expToDrop);
@@ -533,29 +555,52 @@ public final class EntitiesListener implements Listener {
                 }, 50L);
             } else if (StackSplit.ENTITY_BREED.isEnabled()) {
                 stackedEntity.decreaseStackAmount(1, true);
-                StackedEntity duplicated = stackedEntity.spawnDuplicate(1, SpawnCause.BREEDING);
-                plugin.getNMSEntities().setInLove((Animals) duplicated.getLivingEntity(), e.getPlayer(), true);
+    
+                StackedEntity duplicated = stackedEntity.spawnDuplicate(
+                        1,
+                        SpawnCause.BREEDING
+                );
+    
+                plugin.getNMSEntities().setInLove(
+                        (Animals) duplicated.getLivingEntity(),
+                        e.getPlayer(),
+                        true
+                );
+    
                 itemsAmountToRemove = 1;
             } else {
                 return;
             }
-
+    
             e.setCancelled(true);
-
+    
             if (e.getPlayer().getGameMode() != GameMode.CREATIVE) {
                 int inHandItemsAmount = inHand.getAmount();
-                EquipmentSlot usedHand = ItemUtils.getHand(e);
-
+    
                 if (itemsAmountToRemove >= inHandItemsAmount) {
-                    ItemUtils.setItemInHand(e.getPlayer().getInventory(), usedHand, null);
-                    if (itemsAmountToRemove > inHandItemsAmount)
-                        ItemUtils.removeItemFromHand(e.getPlayer().getInventory(), inHand, itemsAmountToRemove - inHandItemsAmount);
+                    ItemUtils.setItemInHand(
+                            e.getPlayer().getInventory(),
+                            usedHand,
+                            null
+                    );
+    
+                    if (itemsAmountToRemove > inHandItemsAmount) {
+                        ItemUtils.removeItemFromHand(
+                                e.getPlayer().getInventory(),
+                                inHand,
+                                itemsAmountToRemove - inHandItemsAmount
+                        );
+                    }
                 } else {
                     ItemStack newItem = inHand.clone();
                     newItem.setAmount(inHandItemsAmount - itemsAmountToRemove);
-                    ItemUtils.setItemInHand(e.getPlayer().getInventory(), usedHand, newItem);
+    
+                    ItemUtils.setItemInHand(
+                            e.getPlayer().getInventory(),
+                            usedHand,
+                            newItem
+                    );
                 }
-
             }
         }
     }
